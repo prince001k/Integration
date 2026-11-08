@@ -1,0 +1,256 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Organizations & Domains ────────────────────────────────────────────────────
+
+model Organization {
+  id               Int                @id @default(autoincrement())
+  name             String
+  domain           String?            @unique
+  createdAt        DateTime           @default(now()) @map("created_at")
+  
+  agents           Agent[]
+  connections      SocialConnection[]
+  roles            Role[]
+  users            User[]
+  fbUsers          FbUser[]
+  fbVideoComments  FbVideoComment[]
+  socialMetrics    SocialMetric[]
+  quickReplies     QuickReply[]
+  scheduledPosts   ScheduledPost[]
+  igPostInsights   IgPostInsight[]
+  fbPostInsights   FbPostInsight[]
+
+  @@map("organizations")
+}
+
+// ─── Auth & Roles ─────────────────────────────────────────────────────────────
+
+model Role {
+  id             Int           @id @default(autoincrement())
+  organizationId Int?          @map("organization_id")
+  name           String
+  permissions    Json          @default("[]")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  agents         Agent[]
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, name]) // Roles are unique per organization
+  @@map("roles")
+}
+
+model Agent {
+  id             Int           @id @default(autoincrement())
+  name           String
+  email          String        @unique
+  passwordHash   String?       @map("password_hash")
+  googleId       String?       @map("google_id")
+  roleId         Int?          @map("role_id")
+  organizationId Int?          @map("organization_id")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  role           Role?         @relation(fields: [roleId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  @@map("agents")
+}
+
+// ─── Social Connections (per-account OAuth tokens) ───────────────────────────────
+
+model SocialConnection {
+  id              Int           @id @default(autoincrement())
+  organizationId  Int           @map("organization_id")
+  platform        String        // 'facebook' | 'instagram'
+  pageId          String?       @map("page_id")
+  pageName        String?       @map("page_name")
+  igAccountId     String?       @map("ig_account_id")
+  igUsername      String?       @map("ig_username")
+  pageAccessToken String        @map("page_access_token")
+  userAccessToken String?       @map("user_access_token")
+  tokenExpiresAt  DateTime?     @map("token_expires_at")
+  connectedAt     DateTime      @default(now()) @map("connected_at")
+  organization    Organization  @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, platform, pageId])
+  @@map("social_connections")
+}
+
+// ─── Instagram Users & Messages ───────────────────────────────────────────────
+
+model User {
+  id                String        @id
+  organizationId    Int?          @map("organization_id")
+  name              String?
+  profilePic        String?       @map("profile_pic")
+  lastMessageAt     DateTime      @default(now()) @map("last_message_at")
+  priority          String        @default("normal")
+  tags              String[]      @default([])
+  assignedTo        String?       @map("assigned_to")
+  sentiment         String        @default("neutral")
+  slaBreached       Boolean       @default(false) @map("sla_breached")
+  lastCustomerMsgAt DateTime?     @map("last_customer_msg_at")
+  messages          Message[]
+  organization      Organization? @relation(fields: [organizationId], references: [id])
+
+  @@map("users")
+}
+
+model Message {
+  id             Int       @id @default(autoincrement())
+  organizationId Int?      @map("organization_id")
+  userId         String    @map("user_id")
+  text           String?
+  sender         String    // 'agent' | 'customer'
+  timestamp      DateTime  @default(now())
+  user           User      @relation(fields: [userId], references: [id])
+
+  @@map("messages")
+}
+
+// ─── Facebook Users & Messages ────────────────────────────────────────────────
+
+model FbUser {
+  id                String        @id
+  organizationId    Int?          @map("organization_id")
+  name              String?
+  profilePic        String?       @map("profile_pic")
+  lastMessageAt     DateTime      @default(now()) @map("last_message_at")
+  priority          String        @default("normal")
+  tags              String[]      @default([])
+  assignedTo        String?       @map("assigned_to")
+  sentiment         String        @default("neutral")
+  slaBreached       Boolean       @default(false) @map("sla_breached")
+  lastCustomerMsgAt DateTime?     @map("last_customer_msg_at")
+  messages          FbMessage[]
+  organization      Organization? @relation(fields: [organizationId], references: [id])
+
+  @@map("fb_users")
+}
+
+model FbMessage {
+  id             Int      @id @default(autoincrement())
+  organizationId Int?     @map("organization_id")
+  userId         String   @map("user_id")
+  text           String?
+  sender         String   // 'agent' | 'customer'
+  timestamp      DateTime @default(now())
+  user           FbUser   @relation(fields: [userId], references: [id])
+
+  @@map("fb_messages")
+}
+
+model FbVideoComment {
+  id             Int           @id @default(autoincrement())
+  organizationId Int?          @map("organization_id")
+  commentId      String?       @unique @map("comment_id")
+  videoId        String?       @map("video_id")
+  fromId         String?       @map("from_id")
+  fromName       String?       @map("from_name")
+  message        String
+  createdTime    BigInt?       @map("created_time")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  @@map("fb_video_comments")
+}
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+model SocialMetric {
+  organizationId Int?          @map("organization_id")
+  platform       String
+  metricDate     DateTime      @map("metric_date") @db.Date
+  followers      Int?
+  reach          Int?
+  impressions    Int?
+  engagement     Int?
+  interactions   Int?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  // Need a unique ID since composite ID requires organizationId to not be null, but we made it optional.
+  // Actually, let's just make it a compound unique.
+  id             Int           @id @default(autoincrement())
+
+  @@unique([organizationId, platform, metricDate])
+  @@map("social_metrics")
+}
+
+// ─── Quick Replies ────────────────────────────────────────────────────────────
+
+model QuickReply {
+  id             Int           @id @default(autoincrement())
+  organizationId Int?          @map("organization_id")
+  title          String
+  body           String
+  createdAt      DateTime      @default(now()) @map("created_at")
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  @@map("quick_replies")
+}
+
+// ─── Scheduled Posts ──────────────────────────────────────────────────────────
+
+model ScheduledPost {
+  id             Int           @id @default(autoincrement())
+  organizationId Int?          @map("organization_id")
+  platform       String        // 'facebook' | 'instagram'
+  text           String?
+  mediaUrl       String?       @map("media_url")
+  postType       String        @default("feed") @map("post_type") // 'feed' | 'story' | 'reel'
+  scheduledAt    DateTime      @map("scheduled_at")
+  status         String        @default("pending") // 'pending' | 'published' | 'failed'
+  createdAt      DateTime      @default(now()) @map("created_at")
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  @@map("scheduled_posts")
+}
+
+// ─── Post Insight Caches ──────────────────────────────────────────────────────
+
+model IgPostInsight {
+  mediaId        String        @id @map("media_id")
+  organizationId Int?          @map("organization_id")
+  caption        String?
+  mediaType      String?       @map("media_type")
+  mediaUrl       String?       @map("media_url")
+  permalink      String?
+  thumbnailUrl   String?       @map("thumbnail_url")
+  timestamp      DateTime?
+  views          Int           @default(0)
+  reach          Int           @default(0)
+  likes          Int           @default(0)
+  comments       Int           @default(0)
+  saves          Int           @default(0)
+  shares         Int           @default(0)
+  fetchedAt      DateTime      @default(now()) @map("fetched_at")
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  @@map("ig_post_insights")
+}
+
+model FbPostInsight {
+  postId         String        @id @map("post_id")
+  organizationId Int?          @map("organization_id")
+  message        String?
+  mediaUrl       String?       @map("media_url")
+  permalink      String?
+  timestamp      DateTime?
+  impressions    Int           @default(0)
+  reach          Int           @default(0)
+  reactions      Int           @default(0)
+  comments       Int           @default(0)
+  shares         Int           @default(0)
+  clicks         Int           @default(0)
+  fetchedAt      DateTime      @default(now()) @map("fetched_at")
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  @@map("fb_post_insights")
+}
